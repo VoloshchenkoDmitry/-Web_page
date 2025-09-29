@@ -215,4 +215,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml#
 
+# IDE
 .idea/
+*.iws
+*.iml
+*.ipr

@@ -1,0 +1,44 @@
+{% extends 'catalog/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-6">
+            {% if product.image %}
+            <img src="{{ product.image.url }}" class="img-fluid rounded" alt="{{ product.name }}">
+            {% else %}
+            <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 300px;">
+                <span class="text-muted">Нет изображения</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="col-md-6">
+            <h1 class="display-4">{{ product.name }}</h1>
+            <p class="lead text-muted">{{ product.category.name }}</p>
+
+            <div class="mb-4">
+                <h2 class="text-primary">{{ product.price }} ₽</h2>
+            </div>
+
+            <div class="mb-4">
+                <h4>Описание</h4>
+                <p class="text-justify">{{ product.description }}</p>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-6">
+                    <small class="text-muted">Создан: {{ product.created_at|date:"d.m.Y H:i" }}</small>
+                </div>
+                <div class="col-6">
+                    <small class="text-muted">Обновлен: {{ product.updated_at|date:"d.m.Y H:i" }}</small>
+                </div>
+            </div>
+
+            <div class="d-grid gap-2">
+                <button class="btn btn-primary btn-lg">Купить</button>
+                <a href="{% url 'catalog:home' %}" class="btn btn-outline-secondary">Назад к каталогу</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

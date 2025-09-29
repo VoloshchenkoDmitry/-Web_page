@@ -31,4 +31,3 @@ class ProductAdmin(admin.ModelAdmin):
 @admin.register(Contact)
 class ContactAdmin(admin.ModelAdmin):
     list_display = ('country', 'inn', 'address')
-    list_display_links = ('country',)

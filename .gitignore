@@ -213,4 +213,49 @@ marimo/_lsp/
 __marimo__/
 
 # Streamlit
-.streamlit/secrets.toml
+.streamlit/secrets.toml#
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Django
+*.log
+*.pot
+*.pyc
+__pycache__/
+db.sqlite3
+media/
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.sqlite3
+*.db
+
+# Static files
+staticfiles/
+
+# Logs
+logs/
+*.log
+
+# Python
+*.pyo
+*.pyd
+.Python

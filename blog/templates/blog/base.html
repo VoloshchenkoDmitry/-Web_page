@@ -1,0 +1,10 @@
+{% extends 'catalog/base.html' %}
+
+{% block title %}{% block blog_title %}Блог Skystore{% endblock %}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    {% block blog_content %}
+    {% endblock %}
+</div>
+{% endblock %}

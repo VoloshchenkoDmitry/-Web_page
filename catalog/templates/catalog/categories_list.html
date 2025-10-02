@@ -1,0 +1,64 @@
+{% extends 'catalog/base.html' %}
+
+{% block title %}Категории продуктов - Skystore{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'catalog:home' %}">Главная</a></li>
+            <li class="breadcrumb-item active">Категории</li>
+        </ol>
+    </nav>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5">Категории продуктов</h1>
+            <p class="lead">Выберите интересующую вас категорию для просмотра продуктов</p>
+        </div>
+    </div>
+
+    <div class="row">
+        {% for item in categories_with_counts %}
+        <div class="col-lg-4 col-md-6 mb-4">
+            <div class="card h-100 category-card">
+                <div class="card-body">
+                    <h5 class="card-title">{{ item.category.name }}</h5>
+
+                    {% if item.category.description %}
+                    <p class="card-text">{{ item.category.description|truncatewords:30 }}</p>
+                    {% endif %}
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-primary">
+                            {{ item.product_count }} продукт(ов)
+                        </span>
+                        <a href="{% url 'catalog:category_products' item.category.name %}"
+                           class="btn btn-outline-primary btn-sm">
+                            Смотреть продукты
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                <h4>Категории не найдены</h4>
+                <p>Пока нет доступных категорий продуктов.</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+.category-card {
+    transition: transform 0.2s ease-in-out;
+}
+.category-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+</style>
+{% endblock %}

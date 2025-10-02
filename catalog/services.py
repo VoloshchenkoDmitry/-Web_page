@@ -26,11 +26,10 @@ def get_products_by_category(category_slug, include_drafts=False, user=None):
     # Фильтруем по статусу
     if not include_drafts:
         queryset = queryset.filter(status='published')
-    elif user and user.is_authenticated:
-        # Для авторизованных пользователей показываем их черновики + опубликованные
-        queryset = queryset.filter(
-            Q(status='published') |
-            Q(status='draft', owner=user)
+    elif user and not user.is_staff:
+        # Для авторизованных пользователей показываем их черновики
+        queryset = queryset.filter(status='published') | queryset.filter(
+            status='draft', owner=user
         )
 
     products = list(queryset.order_by('-created_at'))
@@ -73,6 +72,83 @@ def get_cached_products():
     return products
 
 
+def invalidate_product_cache(product_id=None, category_slug=None):
+    """
+    Инвалидирует кеш продуктов
+    """
+    if product_id:
+        # Инвалидируем кеш конкретного продукта
+        cache.delete(f'product_{product_id}')
+
+    if category_slug:
+        # Инвалидируем кеш категории
+        cache.delete(f'products_category_{category_slug}_False')
+        cache.delete(f'products_category_{category_slug}_True')
+
+    # Инвалидируем общий кеш
+    cache.delete('all_published_products')
+    cache.delete('all_categories')
+    cache.delete('categories_with_counts')
+
+    # Инвалидируем кеш избранных продуктов
+    for limit in [3, 6, 9]:
+        cache.delete(f'featured_products_{limit}')
+
+    # Инвалидируем кеш списков продуктов
+    cache.delete('product_list_published_only')
+    cache.delete('product_list_all_drafts')
+
+
+def get_cached_product_list(include_drafts=False, user=None, category_slug=None):
+    """
+    Низкоуровневое кеширование списка продуктов с фильтрацией
+    """
+    # Создаем ключ кеша на основе параметров
+    cache_key_parts = ['product_list']
+
+    if include_drafts and user:
+        cache_key_parts.append(f'drafts_user_{user.id}')
+    elif include_drafts:
+        cache_key_parts.append('all_drafts')
+    else:
+        cache_key_parts.append('published_only')
+
+    if category_slug:
+        cache_key_parts.append(f'category_{category_slug}')
+
+    cache_key = '_'.join(cache_key_parts)
+
+    # Пытаемся получить данные из кеша
+    cached_products = cache.get(cache_key)
+
+    if cached_products is not None:
+        return cached_products
+
+    # Если в кеше нет, выполняем запрос к БД
+    queryset = Product.objects.select_related('category', 'owner')
+
+    # Фильтрация по категории
+    if category_slug:
+        queryset = queryset.filter(category__name=category_slug)
+
+    # Фильтрация по статусу
+    if not include_drafts:
+        queryset = queryset.filter(status='published')
+    elif user and user.is_authenticated and not user.is_staff:
+        # Для авторизованных пользователей показываем их черновики + опубликованные
+        queryset = queryset.filter(
+            Q(status='published') |
+            Q(status='draft', owner=user)
+        )
+
+    products = list(queryset.order_by('-created_at'))
+
+    # Сохраняем в кеш на 5 минут
+    cache.set(cache_key, products, 60 * 5)
+
+    return products
+
+
 def get_cached_categories_with_counts():
     """
     Возвращает кешированный список категорий с количеством продуктов
@@ -102,56 +178,6 @@ def get_cached_categories_with_counts():
     return categories_with_counts
 
 
-def get_cached_product_list(include_drafts=False, user=None, category_slug=None):
-    """
-    Низкоуровневое кеширование списка продуктов с фильтрацией
-    """
-    # Создаем ключ кеша на основе параметров
-    cache_key_parts = ['product_list']
-
-    if include_drafts and user and user.is_authenticated:
-        cache_key_parts.append(f'drafts_user_{user.id}')
-    elif include_drafts:
-        cache_key_parts.append('all_drafts')
-    else:
-        cache_key_parts.append('published_only')
-
-    if category_slug:
-        cache_key_parts.append(f'category_{category_slug}')
-
-    cache_key = '_'.join(cache_key_parts)
-
-    # Пытаемся получить данные из кеша
-    cached_products = cache.get(cache_key)
-
-    if cached_products is not None:
-        return cached_products
-
-    # Если в кеше нет, выполняем запрос к БД
-    queryset = Product.objects.select_related('category', 'owner')
-
-    # Фильтрация по категории
-    if category_slug:
-        queryset = queryset.filter(category__name=category_slug)
-
-    # Фильтрация по статусу
-    if not include_drafts:
-        queryset = queryset.filter(status='published')
-    elif user and user.is_authenticated:
-        # Для авторизованных пользователей показываем их черновики + опубликованные
-        queryset = queryset.filter(
-            Q(status='published') |
-            Q(status='draft', owner=user)
-        )
-
-    products = list(queryset.order_by('-created_at'))
-
-    # Сохраняем в кеш на 5 минут
-    cache.set(cache_key, products, 60 * 5)
-
-    return products
-
-
 def get_cached_featured_products(limit=6):
     """
     Возвращает кешированный список избранных продуктов
@@ -169,26 +195,3 @@ def get_cached_featured_products(limit=6):
     cache.set(cache_key, products, 60 * 10)  # 10 минут
 
     return products
-
-
-def invalidate_product_cache(product_id=None, category_slug=None):
-    """
-    Инвалидирует кеш продуктов
-    """
-    if product_id:
-        # Инвалидируем кеш конкретного продукта
-        cache.delete(f'product_{product_id}')
-
-    if category_slug:
-        # Инвалидируем кеш категории
-        cache.delete(f'products_category_{category_slug}_False')
-        cache.delete(f'products_category_{category_slug}_True')
-
-    # Инвалидируем общий кеш
-    cache.delete('all_published_products')
-    cache.delete('all_categories')
-    cache.delete('categories_with_counts')
-
-    # Инвалидируем все product_list кеши
-    for key in cache.keys('product_list*'):
-        cache.delete(key)

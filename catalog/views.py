@@ -10,7 +10,14 @@ from django.conf import settings
 from .models import Product, Contact, Category
 from .forms import ProductForm
 from .utils import can_edit_product, can_delete_product, can_unpublish_product, is_product_moderator
-from .services import get_products_by_category, get_cached_categories, get_cached_categories_with_counts, get_cached_product_list, get_cached_featured_products
+from .services import (
+    get_products_by_category,
+    get_cached_categories,
+    get_cached_product_list,
+    get_cached_categories_with_counts,
+    get_cached_featured_products,
+    invalidate_product_cache
+)
 
 
 class HomeView(ListView):
@@ -51,55 +58,6 @@ class ContactsView(TemplateView):
         # Обработка формы
         messages.success(request, 'Сообщение успешно отправлено!')
         return redirect('catalog:contacts')
-
-
-class CategoriesListView(ListView):
-    model = Category
-    template_name = 'catalog/categories_list.html'
-    context_object_name = 'categories_with_counts'
-
-    @method_decorator(cache_page(60 * 30))  # Кешируем на 30 минут
-    def dispatch(self, *args, **kwargs):
-        return super().dispatch(*args, **kwargs)
-
-    def get_queryset(self):
-        return get_cached_categories_with_counts()
-
-
-class CategoryProductsView(ListView):
-    model = Product
-    template_name = 'catalog/category_products.html'
-    context_object_name = 'products'
-    paginate_by = 12
-
-    @method_decorator(cache_page(60 * 10))  # Кешируем на 10 минут
-    def dispatch(self, *args, **kwargs):
-        return super().dispatch(*args, **kwargs)
-
-    def get_queryset(self):
-        category_slug = self.kwargs.get('category_slug')
-        include_drafts = self.request.user.is_authenticated
-
-        return get_products_by_category(
-            category_slug,
-            include_drafts=include_drafts,
-            user=self.request.user
-        )
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        category_slug = self.kwargs.get('category_slug')
-
-        try:
-            category = Category.objects.get(name=category_slug)
-            context['category'] = category
-            context['page_title'] = f'Продукты в категории: {category.name}'
-        except Category.DoesNotExist:
-            context['category'] = None
-            context['page_title'] = 'Категория не найдена'
-
-        context['categories'] = get_cached_categories()
-        return context
 
 
 class ProductDetailView(DetailView):
@@ -143,12 +101,13 @@ class ProductCreateView(LoginRequiredMixin, CreateView):
 
     def form_valid(self, form):
         form.instance.owner = self.request.user
-        messages.success(self.request, 'Товар успешно добавлен!')
+        response = super().form_valid(form)
 
         # Инвалидируем кеш после создания продукта
         invalidate_product_cache()
 
-        return super().form_valid(form)
+        messages.success(self.request, 'Товар успешно добавлен!')
+        return response
 
     def form_invalid(self, form):
         messages.error(self.request, 'Пожалуйста, исправьте ошибки в форме.')
@@ -171,6 +130,10 @@ class ProductUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
 
     def get_success_url(self):
         messages.success(self.request, 'Товар успешно обновлен!')
+        return reverse_lazy('catalog:product_detail', kwargs={'pk': self.object.pk})
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
 
         # Инвалидируем кеш после обновления продукта
         invalidate_product_cache(
@@ -178,7 +141,7 @@ class ProductUpdateView(LoginRequiredMixin, UserPassesTestMixin, UpdateView):
             category_slug=self.object.category.name if self.object.category else None
         )
 
-        return reverse_lazy('catalog:product_detail', kwargs={'pk': self.object.pk})
+        return response
 
     def form_invalid(self, form):
         messages.error(self.request, 'Пожалуйста, исправьте ошибки в форме.')
@@ -202,14 +165,13 @@ class ProductDeleteView(LoginRequiredMixin, UserPassesTestMixin, DeleteView):
         product = self.get_object()
         category_slug = product.category.name if product.category else None
 
-        # Инвалидируем кеш перед удалением
-        invalidate_product_cache(
-            product_id=product.pk,
-            category_slug=category_slug
-        )
+        response = super().delete(request, *args, **kwargs)
+
+        # Инвалидируем кеш после удаления продукта
+        invalidate_product_cache(category_slug=category_slug)
 
         messages.success(self.request, 'Товар успешно удален!')
-        return super().delete(request, *args, **kwargs)
+        return response
 
     def handle_no_permission(self):
         messages.error(self.request, 'У вас нет прав для удаления этого продукта.')
@@ -247,3 +209,52 @@ class ProductPublishView(LoginRequiredMixin, UserPassesTestMixin, DetailView):
     def handle_no_permission(self):
         messages.error(self.request, 'У вас нет прав для изменения статуса публикации этого продукта.')
         return redirect('catalog:product_detail', pk=self.get_object().pk)
+
+
+class CategoryProductsView(ListView):
+    model = Product
+    template_name = 'catalog/category_products.html'
+    context_object_name = 'products'
+    paginate_by = 12
+
+    @method_decorator(cache_page(60 * 10))  # Кешируем на 10 минут
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def get_queryset(self):
+        category_slug = self.kwargs.get('category_slug')
+        include_drafts = self.request.user.is_authenticated
+
+        return get_products_by_category(
+            category_slug,
+            include_drafts=include_drafts,
+            user=self.request.user
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        category_slug = self.kwargs.get('category_slug')
+
+        try:
+            category = Category.objects.get(name=category_slug)
+            context['category'] = category
+            context['page_title'] = f'Продукты в категории: {category.name}'
+        except Category.DoesNotExist:
+            context['category'] = None
+            context['page_title'] = 'Категория не найдена'
+
+        context['categories'] = get_cached_categories()
+        return context
+
+
+class CategoriesListView(ListView):
+    model = Category
+    template_name = 'catalog/categories_list.html'
+    context_object_name = 'categories_with_counts'
+
+    @method_decorator(cache_page(60 * 30))  # Кешируем на 30 минут
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def get_queryset(self):
+        return get_cached_categories_with_counts()
